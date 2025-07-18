@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { TeamManagementSection } from '@/components/team/team-management-section'
 
 export default function ProjectDetailPage() {
   const params = useParams()
@@ -46,6 +47,12 @@ export default function ProjectDetailPage() {
       members: 8,
       tasks: 24,
     }
+  }
+
+  // TODO: Get current user data from authentication context
+  const currentUser = {
+    id: '1',
+    role: 'OWNER' as const, // This would come from the project member data
   }
 
   return (
@@ -144,9 +151,12 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">
-          <div className="text-center py-12 text-muted-foreground">
-            Team members management coming soon...
-          </div>
+          <TeamManagementSection
+            projectId={projectId}
+            projectName={project.name}
+            currentUserId={currentUser.id}
+            currentUserRole={currentUser.role}
+          />
         </TabsContent>
 
         <TabsContent value="settings" className="mt-6">

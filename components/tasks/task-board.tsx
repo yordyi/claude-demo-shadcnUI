@@ -1,16 +1,32 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Plus, Calendar, MessageSquare, Paperclip } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { TaskWithRelations } from '@/types/api/responses'
+import { FilterBar } from './filter-bar'
+import { defaultFilters, filterTasks, type TaskFilters } from '@/lib/filters'
+import { TaskExportButton } from '@/components/export'
+import type { TaskWithRelations, UserResponse as User } from '@/types/api/responses'
+
+// Type definition for Label if @prisma/client is not available
+interface Label {
+  id: string
+  name: string
+  color: string
+  projectId: string
+  createdAt: Date
+  updatedAt: Date
+}
 
 interface TaskBoardProps {
   projectId: string
+  users?: User[]
+  labels?: Label[]
+  currentUserId?: string
 }
 
 const columns = [
@@ -20,11 +36,17 @@ const columns = [
   { id: 'DONE', title: 'Done', color: 'bg-green-500' },
 ]
 
-export function TaskBoard({ projectId }: TaskBoardProps) {
+export function TaskBoard({ projectId, users = [], labels = [], currentUserId }: TaskBoardProps) {
   const [tasks] = useState<TaskWithRelations[]>([])
+  const [filters, setFilters] = useState<TaskFilters>(defaultFilters)
+
+  // Filter tasks based on current filters
+  const filteredTasks = useMemo(() => {
+    return filterTasks(tasks, filters)
+  }, [tasks, filters])
 
   const getTasksByStatus = (status: string) => {
-    return tasks.filter(task => task.status === status)
+    return filteredTasks.filter(task => task.status === status)
   }
 
   const getPriorityColor = (priority: string) => {
@@ -58,8 +80,35 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-      {columns.map((column) => (
+    <div className="space-y-6">
+      {/* Filter Bar with Export Button */}
+      <div className="flex items-center justify-between gap-4">
+        <FilterBar
+          filters={filters}
+          onFiltersChange={setFilters}
+          users={users}
+          labels={labels}
+          currentUserId={currentUserId}
+        />
+        <TaskExportButton 
+          tasks={filteredTasks} 
+          variant="outline"
+          size="default"
+        />
+      </div>
+
+      {/* Filtered Results Summary */}
+      {filters.search || Object.values(filters).some(v => 
+        Array.isArray(v) ? v.length > 0 : v && typeof v === 'object' ? Object.keys(v).length > 0 : false
+      ) ? (
+        <div className="text-sm text-muted-foreground">
+          Showing {filteredTasks.length} of {tasks.length} tasks
+        </div>
+      ) : null}
+
+      {/* Task Board Columns */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {columns.map((column) => (
         <div key={column.id} className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -156,6 +205,7 @@ export function TaskBoard({ projectId }: TaskBoardProps) {
           </div>
         </div>
       ))}
+      </div>
     </div>
   )
 }
