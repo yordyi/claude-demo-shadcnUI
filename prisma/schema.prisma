@@ -1,0 +1,291 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model for authentication and profile
+model User {
+  id               String           @id @default(cuid())
+  email            String           @unique
+  username         String           @unique
+  password         String
+  name             String?
+  avatar           String?
+  role             UserRole         @default(USER)
+  emailVerified    DateTime?
+  twoFactorEnabled Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  // Relations
+  ownedProjects    Project[]        @relation("ProjectOwner")
+  projectMembers   ProjectMember[]
+  tasks            Task[]           @relation("TaskAssignee")
+  createdTasks     Task[]           @relation("TaskCreator")
+  comments         Comment[]
+  activities       Activity[]
+  notifications    Notification[]
+}
+
+// Project model
+model Project {
+  id          String         @id @default(cuid())
+  name        String
+  key         String         @unique // e.g., "PM", "DEV"
+  description String?
+  status      ProjectStatus  @default(ACTIVE)
+  visibility  Visibility     @default(PRIVATE)
+  startDate   DateTime?
+  endDate     DateTime?
+  ownerId     String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Relations
+  owner       User           @relation("ProjectOwner", fields: [ownerId], references: [id])
+  members     ProjectMember[]
+  tasks       Task[]
+  sprints     Sprint[]
+  labels      Label[]
+  activities  Activity[]
+}
+
+// Project members with roles
+model ProjectMember {
+  id        String      @id @default(cuid())
+  userId    String
+  projectId String
+  role      MemberRole  @default(MEMBER)
+  joinedAt  DateTime    @default(now())
+
+  // Relations
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+}
+
+// Task model
+model Task {
+  id          String       @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus   @default(TODO)
+  priority    Priority     @default(MEDIUM)
+  type        TaskType     @default(TASK)
+  projectId   String
+  assigneeId  String?
+  creatorId   String
+  parentId    String?      // For subtasks
+  sprintId    String?
+  position    Int          @default(0) // For ordering in kanban
+  dueDate     DateTime?
+  estimate    Int?         // Story points or hours
+  timeSpent   Int          @default(0) // In minutes
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  // Relations
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  creator     User         @relation("TaskCreator", fields: [creatorId], references: [id])
+  parent      Task?        @relation("Subtasks", fields: [parentId], references: [id])
+  subtasks    Task[]       @relation("Subtasks")
+  sprint      Sprint?      @relation(fields: [sprintId], references: [id])
+  comments    Comment[]
+  attachments Attachment[]
+  labels      TaskLabel[]
+  activities  Activity[]
+}
+
+// Sprint model for agile projects
+model Sprint {
+  id        String      @id @default(cuid())
+  name      String
+  goal      String?
+  projectId String
+  startDate DateTime
+  endDate   DateTime
+  status    SprintStatus @default(PLANNED)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  // Relations
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+}
+
+// Label model for categorization
+model Label {
+  id        String      @id @default(cuid())
+  name      String
+  color     String      // Hex color code
+  projectId String
+  createdAt DateTime    @default(now())
+
+  // Relations
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     TaskLabel[]
+
+  @@unique([name, projectId])
+}
+
+// Many-to-many relation between tasks and labels
+model TaskLabel {
+  taskId    String
+  labelId   String
+  assignedAt DateTime @default(now())
+
+  // Relations
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label     Label    @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+}
+
+// Comment model
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  taskId    String
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+}
+
+// Attachment model
+model Attachment {
+  id        String   @id @default(cuid())
+  filename  String
+  url       String
+  size      Int      // In bytes
+  mimeType  String
+  taskId    String
+  uploadedAt DateTime @default(now())
+
+  // Relations
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+// Activity log model
+model Activity {
+  id        String       @id @default(cuid())
+  type      ActivityType
+  action    String       // e.g., "created", "updated", "deleted"
+  entityId  String       // ID of the affected entity
+  entityType String      // "task", "project", etc.
+  metadata  Json?        // Additional data about the activity
+  userId    String
+  projectId String?
+  taskId    String?
+  createdAt DateTime     @default(now())
+
+  // Relations
+  user      User         @relation(fields: [userId], references: [id])
+  project   Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  task      Task?        @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+// Notification model
+model Notification {
+  id        String   @id @default(cuid())
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  userId    String
+  metadata  Json?    // Additional data like taskId, projectId, etc.
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
+}
+
+enum Visibility {
+  PUBLIC
+  PRIVATE
+  TEAM
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+  CANCELED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskType {
+  TASK
+  BUG
+  FEATURE
+  EPIC
+  STORY
+}
+
+enum SprintStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+}
+
+enum ActivityType {
+  PROJECT_CREATED
+  PROJECT_UPDATED
+  PROJECT_DELETED
+  TASK_CREATED
+  TASK_UPDATED
+  TASK_DELETED
+  TASK_ASSIGNED
+  TASK_COMPLETED
+  COMMENT_ADDED
+  MEMBER_ADDED
+  MEMBER_REMOVED
+  SPRINT_STARTED
+  SPRINT_COMPLETED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_DUE
+  COMMENT_MENTION
+  PROJECT_INVITE
+  STATUS_CHANGE
+}
